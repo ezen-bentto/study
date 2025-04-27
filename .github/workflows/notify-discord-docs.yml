@@ -1,0 +1,56 @@
+name: Notify Discord when docs commit is pushed
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify-discord:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if there is a docs commit
+        id: check_docs
+        run: |
+          echo "Checking commits for docs:"
+          for i in $(seq 0 $(($(jq '.commits | length' "$GITHUB_EVENT_PATH") - 1))); do
+            commit_message=$(jq -r ".commits[$i].message" "$GITHUB_EVENT_PATH")
+            commit_id=$(jq -r ".commits[$i].id" "$GITHUB_EVENT_PATH")
+            echo "Found commit: $commit_message"
+
+            if [[ "$commit_message" == docs:* ]]; then
+              echo "docs commit detected."
+              echo "found=true" >> $GITHUB_ENV
+              echo "commit_message=$commit_message" >> $GITHUB_ENV
+              echo "commit_id=$commit_id" >> $GITHUB_ENV
+              break
+            fi
+          done
+
+      - name: Notify Discord
+        if: env.found == 'true'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          payload=$(jq -n --arg actor "${{ github.actor }}" \
+                          --arg message "${{ env.commit_message }}" \
+                          --arg commit_url "https://github.com/${{ github.repository }}/commit/${{ env.commit_id }}" \
+            '{
+              "embeds": [
+                {
+                  "title": "📚 New Docs Update",
+                  "description": "\($actor)님이 새로운 학습 내용을 정리했습니다!\n📝 \($message)\n🔗 [커밋 보러 가기](\($commit_url))",
+                  "color": 3447003,
+                  "timestamp": now | todateiso8601
+                }
+              ]
+            }')
+
+          curl  -H "Content-Type: application/json" \
+                -X POST \
+                -d "$payload" \
+                "$DISCORD_WEBHOOK"
