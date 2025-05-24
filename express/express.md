@@ -211,7 +211,7 @@ export const ENV = {
 
 ```
 # ────────────── 서버 설정 ──────────────
-PORT=4000
+PORT=3000
 NODE_ENV=development                # development | production
 
 # ────────────── 데이터베이스 ──────────────
@@ -232,7 +232,7 @@ AWS_SECRET_ACCESS_KEY=your_aws_secret_key
 AWS_S3_BUCKET_NAME=your_s3_bucket
 
 # ────────────── 기타 설정 ──────────────
-CORS_ORIGIN=http://localhost:3000  # 허용할 프론트엔드 주소
+CORS_ORIGIN=http://localhost:5173  # 허용할 프론트엔드 주소
 LOG_LEVEL=debug                    # debug | info | warn | error
 ```
 
