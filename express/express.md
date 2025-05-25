@@ -42,9 +42,19 @@ node.js + express.js 를 이용하여 백엔드를 해보자
 
 예시로
 
-controllers 단에서 demo 기능은 `fnc1` 과 `fnc2` 를 각각 파일을 나눠 구현한다
+커뮤니티를 구현하다고 생각해보자
 
-그리고 그것을 `demo.controller.ts ` 에서 통합한다.
+커뮤니티에 필요한 API 가 대충 
+
+- 게시물 보여주는 API 
+- 상세글 API 
+- 수정 API 
+
+등이 있을 것이다.
+
+그것을 community 폴더에 각각 api 별로 모듈화하고 그것을 
+
+그리고 그것을 `community.controller.ts ` 에서 통합한다.
 
 ```ts
 import { fnc1 } from '@/controllers/demo/get.controller';
@@ -58,6 +68,10 @@ export default DemoController;
 이처럼 최대한 모듈화하여서 진행하도록한다.
 
 목표는 한 파일에 `50`줄을 넘기지 않도록 해보자.
+
+물론 목표일뿐, 50줄 넘어간다고 줄빠따 때릴 생각은 없다
+
+의식하고 코딩하라는 소리다.
 
 ## 2. yarn 설치
 
@@ -81,7 +95,7 @@ yarn install
 
 이럼 끝
 
-직접 백엔드 세팅한 것은 별도의 글로 게시할 생각이다. (아마도?)
+직접 백엔드 세팅한 것은 별도의 글로 게시할 생각이다
 
 ## 3. Express 세팅
 
