@@ -142,7 +142,7 @@ registerMiddlewares(app);
 app.use('/api/demo', DemoRouter);
 
 // ✅ 3. 에러 핸들러 등록
-app.use(notFoundHandler); // 404 핸들러
+app.use(errorHandler);
 
 export default app;
 ```
