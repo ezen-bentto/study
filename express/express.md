@@ -495,6 +495,8 @@ export const create = async (data: DemoCreate) => {
 };
 ```
 
+참고로 예시다. 실제로 uuid 를 id 값으로 넣지 말도록 하자.
+
 포스트맨으로 body에 name 값과 email 값을 지정해 주고
 
 [POST] `{{base_url}}/api/demo` 쏴보도고 직접 들어갔는지 확인해 보자
