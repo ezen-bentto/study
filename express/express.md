@@ -529,7 +529,6 @@ export const create = async (data: DemoCreate) => {
 
 ```ts
 new AppError(
-  `message.constant.ts 에 존재 하는 메세지 변수`,
   StatusCodes.NOT_FOUND,
   `error.constant.ts 에 존재하는 에러 변수`
 );
