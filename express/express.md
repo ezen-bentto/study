@@ -16,6 +16,8 @@ node.js + express.js 를 이용하여 백엔드를 해보자
 
 6. fnc2 구현(POST 메소드)
 
+7. 에러 핸들러 사용법법
+
 ### ✅ 참고
 
 - 본 예제는 팀 ezen-bentto의 [node-backend 레포지토리](https://github.com/ezen-bentto/node-backend) 참고용으로 제작된 로직을 기준으로 진행한다.
@@ -149,9 +151,10 @@ export default app;
 
 ```ts
 // index.ts
+import { env } from 'node:process';
 import app from './app';
 
-const PORT = process.env.POST || 4000;
+const PORT = env.port || 4000;
 
 app.listen(PORT, () => {
   console.log(`Server is listening on port : ${PORT}`);
@@ -292,23 +295,22 @@ serivce 실행해줘서 값을 받는다
 `data` 도 관계형DB 에서 나온 select 값이라 data 검증도 필요 없다.
 
 ```ts
-// 다른 import 는 생략함
+// 다른 import 들은 생략함
 import { DemoResponseSchema } from '@/schemas/demo.schema';
-import { Request, RequestHandler, Response } from 'express';
 import { z } from 'zod/v4';
 
-export const get: RequestHandler = async (req: Request, res: Response) => {
-  const data = await DemoService.get();
-  // zod 검증
-  const parsed = z.array(DemoResponseSchema).safeParse(data);
+export const get: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await DemoService.get();
+    const parsed = z.array(DemoResponseSchema).safeParse(data);
+    if (!parsed.success) {
+      throw new AppError(INTERNAL_SERVER_ERROR, StatusCodes.INTERNAL_SERVER_ERROR);
+    }
 
-  if (!parsed.success) {
-    res.status(StatusCodes.BAD_REQUEST).json({ error: parsed.error.message });
-    return;
+    res.status(StatusCodes.OK).json({ data: parsed.data });
+  } catch (err) {
+    next(err);
   }
-
-  res.status(StatusCodes.OK).json({ data: parsed.data });
-};
 ```
 
 **그러나** 외부 시스템에서 데이터를 가져오는 경우 (ex: Raw SQL 쿼리, API 통신, `크롤링` 등) 의 경우에는
@@ -364,13 +366,17 @@ export type DemoResponse = z.infer<typeof DemoResponseSchema>; // 타입 선언
 ### 5-4 service
 
 ```ts
+// 다른 import 생략
 import { DemoModel } from '@/models/demo.model';
 import { DemoResponse } from '@/schemas/demo.schema';
 
 // 반환 타입 명시
 export const get = async (): Promise<DemoResponse[]> => {
-  // 무슨무슨 비즈니스 로직
-  return await DemoModel.findAll();
+  const data = await DemoModel.findAll();
+  if (data.length === 0) {
+    throw new AppError(NOT_FOUND_POSTS, StatusCodes.NOT_FOUND);
+  }
+  return data;
 };
 ```
 
@@ -400,22 +406,20 @@ export const findAll = async () => {
 
 ```ts
 // import 생략
-export const post = async (req: Request, res: Response) => {
-  // 검증
+export const post = async (req: Request, res: Response, next: NextFunction) => {
   const parsed = DemoCreateSchema.safeParse(req.body);
-
-  // 검증 실패시 BAD_REQUEST
   if (!parsed.success) {
-    res.status(StatusCodes.BAD_REQUEST).json({ error: parsed.error.message });
+    // 조건절로 error 보낼땐 next
+    next(new AppError(BAD_REQUEST_VALUE, StatusCodes.BAD_REQUEST));
     return;
   }
-  // Service 실행
-  const result = await DemoService.post(parsed.data);
 
-  if (result.affectedRows === 1) {
+  try {
+    await DemoService.post(parsed.data);
     res.status(StatusCodes.CREATED).json({ message: OK_JOIN });
-    return;
-  } else res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: 'Invalid response format' });
+  } catch (err) {
+    next(err);
+  }
 };
 ```
 
@@ -439,6 +443,9 @@ import { InsertResult } from '@/types/db/response.type';
 
 export const post = async (data: DemoCreate): Promise<InsertResult> => {
   const res = await DemoModel.create(data);
+  if (res.affectedRows !== 1) {
+    throw new AppError(INTERNAL_SERVER_ERROR, StatusCodes.INTERNAL_SERVER_ERROR);
+  }
   return res;
 };
 ```
@@ -493,3 +500,25 @@ export const create = async (data: DemoCreate) => {
 - DB 에 테이블을 안만들었거나
 
 셋 중 하나임
+
+여기서 더 나아가려면 TEST 도구를 쓰면 좋을 것이다.
+
+하지만 그런건 알아서 해라
+
+## 7. 에러 핸들러 사용법
+
+간단하게 에러 핸들러를 세팅했다.
+
+그냥
+
+```ts
+new AppError(
+  `message.constant.ts 에 존재 하는 메세지 변수`,
+  StatusCodes.NOT_FOUND,
+  `error.constant.ts 에 존재하는 에러 변수`
+);
+```
+
+이렇게 박아서 넣어주면 된다.
+
+근데 메세지 변수가 필요할까 고민 중
