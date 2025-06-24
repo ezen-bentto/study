@@ -81,7 +81,7 @@ quill, toastUI 등의 Editor 로 image 를 업로드 할 경우
 
 5. 프론트는 응답받은 S3 이미지 URL을 에디터에 삽입
 
-   이미지가 <img src="S3 URL"> 형식으로 에디터 본문에 포함됨
+   이미지가 `<img src="S3 URL">` 형식으로 에디터 본문에 포함됨
 
 6. 사용자가 글 작성 완료 후, 제목/내용과 함께 /contest 등의 API에 POST 요청
 
