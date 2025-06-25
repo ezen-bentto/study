@@ -1,5 +1,17 @@
 # Tanstack Query 사용법
 
+## 개요
+
+1. 사용 이유
+
+2. 설정
+
+3. 사용법 (query Hook)
+
+   3-1. 기본
+
+   3-2. 심화
+
 ## 1. 사용 이유
 
 누군가 벨을 계속 누른다고 생각해보자
@@ -29,7 +41,7 @@ TanStack Query는 이렇게 '이미 본 데이터'를 기억해서,
 ## 2. 설정
 
 ```ts
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient } from "@tanstack/react-query";
 
 export const queryClient = new QueryClient();
 ```
@@ -37,14 +49,14 @@ export const queryClient = new QueryClient();
 이렇게 객체 생성해서 담아주고
 
 ```ts
-import { createRoot } from 'react-dom/client';
-import './index.css';
-import App from './App.tsx';
-import { BrowserRouter } from 'react-router-dom';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from './lib/queryClient.ts';
+import { createRoot } from "react-dom/client";
+import "./index.css";
+import App from "./App.tsx";
+import { BrowserRouter } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./lib/queryClient.ts";
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
       <App />
@@ -55,12 +67,12 @@ createRoot(document.getElementById('root')!).render(
 
 이렇게 앱에 QueryClientProvider 를 감싸주면 끝
 
-## 3. query Hook
+## 3. 사용법 (query Hook)
 
 가장 기본적인 형태를 보자
 
 ```ts
-const query = useQuery({ queryKey: ['todos'], queryFn: getTodos });
+const query = useQuery({ queryKey: ["todos"], queryFn: getTodos });
 ```
 
 `queryKey` 는 말 그대로 key 다
@@ -83,7 +95,69 @@ const query = useQuery({ queryKey: ['todos'], queryFn: getTodos });
 
 `Mutation` 은 가감하게 생략한다 알아서 찾아봐라
 
-### 3-1. 사용 예시
+### 3-1. 사용 예시 - 기본
+
+- api
+
+  ```ts
+  export const fetchIsBookmark = async (target_id: number) => {
+    const token = localStorage.getItem("accessToken");
+
+    const response = await axios.get(
+      `${import.meta.env.VITE_API_URL}/api/contest/bookmark`,
+      {
+        params: { id: target_id },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return response.data.data;
+  };
+  ```
+
+  기초적인 api
+
+  header 에 토큰 담고 쿼리에 id 값을 담아 쏘고
+
+  해당 id 값을 조회하는 기능이다.
+
+  이걸 tanstack query 적용해보자
+
+- query
+
+  ```ts
+  export const useBookmark = (constetId: number) => {
+    const { data } = useQuery<bookmark>({
+      queryKey: ["bookmark", constetId],
+      queryFn: () => fetchIsBookmark(constetId),
+      placeholderData: keepPreviousData,
+      staleTime: 1000 * 60 * 10,
+    });
+    const bookmarkCount = data?.bookmarkCount;
+    const isBookmarked = data?.isBookmarked;
+    return { bookmarkCount, isBookmarked };
+  };
+  ```
+
+  - `queryKey` 에 key 값과 value 값 설정
+
+  - `queryFn` 에 쓸 api 설정
+
+  - `placeholderData` 는 데이터가 갱신될 때 어색하지 않게 해주는 옵션이라고 생각하면 된다.
+
+  - `staleTime` 는 데이터 만료 시간
+
+  여기서 나는 data 값들을 따로 변수에 담아 return 했지만
+
+  이건 기능 성격에 따라, 취향이다 알잘딱
+
+  그리고 단순히 `data` 만 받을 게 아니라 `isLoading` 이나 `isError` 등의 다양한 반환들을 함께 받을 수 있다.
+
+  반환값들에 대해서는 tanstack doc or [heropy.dev](https://www.heropy.dev/p/HZaKIE) 참고하길 바란다
+
+### 3-2. 사용 예시 - 심화
 
 내가 아는 일반적으로는 GET 으로 값 담는 것은
 
@@ -101,80 +175,87 @@ tanstack query에 해당 파라미터 값들을 key 값에 박아주면 이를 �
 
 그러면 우선 API 를 저렇게 쿼리값을 쌓을 수 있게 코드를 짜보자
 
-```ts
-// src/api/contest/list.ts
-import axios from 'axios';
-import type { Contest } from '@/types/contestType';
+- api
 
-// 🔹 필터 타입 정의
-export interface ContestFilterParams {
-  field?: string[]; // 분야
-  ageGroup?: string; // 연령
-  organizerType?: string[]; // 기업 형태
-}
+  ```ts
+  // src/api/contest/list.ts
+  import axios from "axios";
+  import type { Contest } from "@/types/contestType";
 
-// 🔹 필터 기반으로 GET 요청
-export const fetchContestList = async (filters: ContestFilterParams) => {
-  const params = new URLSearchParams();
-  let query = 'http://localhost:4000/api/contest/getList';
-
-  if (filters.field) {
-    filters.field.forEach(f => params.append('field', f));
+  // 🔹 필터 타입 정의
+  export interface ContestFilterParams {
+    field?: string[]; // 분야
+    ageGroup?: string; // 연령
+    organizerType?: string[]; // 기업 형태
   }
 
-  if (filters.organizerType) {
-    filters.organizerType.forEach(o => params.append('organizerType', o));
-  }
+  // 🔹 필터 기반으로 GET 요청
+  export const fetchContestList = async (filters: ContestFilterParams) => {
+    const params = new URLSearchParams();
+    let query = "http://localhost:4000/api/contest/getList";
 
-  if (filters.ageGroup) {
-    params.append('ageGroup', filters.ageGroup);
-  }
+    if (filters.field) {
+      filters.field.forEach((f) => params.append("field", f));
+    }
 
-  if (params) query += `?${params.toString()}`;
+    if (filters.organizerType) {
+      filters.organizerType.forEach((o) => params.append("organizerType", o));
+    }
 
-  const response = await axios.get<{ data: Contest[] }>(query);
+    if (filters.ageGroup) {
+      params.append("ageGroup", filters.ageGroup);
+    }
 
-  return response.data.data;
-};
-```
+    if (params) query += `?${params.toString()}`;
 
-좀 복잡해 보이지만
+    const response = await axios.get<{ data: Contest[] }>(query);
 
-결국 필터값들을 확인하면서 있으면 있는 만큼 반복문을 돌려서 params 에 박는거다
+    return response.data.data;
+  };
+  ```
 
-forEach 있는 것은 중복 체크 가능한 필터, 그냥 append 는 중복X 필터 항목
+  좀 복잡해 보이지만
 
-전부 중복없는 필터였다면 그냥 배열 하나에 죄다 박아서 반복문 한번만 돌려도 됨
+  결국 필터값들을 확인하면서 있으면 있는 만큼 반복문을 돌려서 params 에 박는거다
 
-이제 tanstack query 훅을 보자
+  forEach 있는 것은 중복 체크 가능한 필터, 그냥 append 는 중복X 필터 항목
 
-```ts
-import { fetchContestListTmp, type ContestFilterParams } from '@/api/contest/list';
-import type { Contest } from '@/types/contestType';
-import { useQuery } from '@tanstack/react-query';
+  전부 중복없는 필터였다면 그냥 배열 하나에 죄다 박아서 반복문 한번만 돌려도 됨
 
-const useGetList = (filters: ContestFilterParams) => {
-  // queryKey는 안정성을 위해 배열은 정렬 해줘야함
-  const queryKey = [
-    'contestList',
-    {
-      field: [...(filters.field ?? [])].sort(),
-      ageGroup: filters.ageGroup ?? '',
-      organizerType: [...(filters.organizerType ?? [])].sort(),
-    },
-  ];
+  이제 query 를 보자
 
-  const { data, isLoading } = useQuery<Contest[]>({
-    queryKey: queryKey,
-    queryFn: () => fetchContestListTmp(filters),
-    staleTime: 5 * 60 * 1000, //5 분
-  });
+- query
 
-  return { data, isLoading };
-};
+  ```ts
+  import {
+    fetchContestListTmp,
+    type ContestFilterParams,
+  } from "@/api/contest/list";
+  import type { Contest } from "@/types/contestType";
+  import { useQuery } from "@tanstack/react-query";
 
-export default useGetList;
-```
+  const useGetList = (filters: ContestFilterParams) => {
+    // queryKey는 안정성을 위해 배열은 정렬 해줘야함
+    const queryKey = [
+      "contestList",
+      {
+        field: [...(filters.field ?? [])].sort(),
+        ageGroup: filters.ageGroup ?? "",
+        organizerType: [...(filters.organizerType ?? [])].sort(),
+      },
+    ];
+
+    const { data, isLoading } = useQuery<Contest[]>({
+      queryKey: queryKey,
+      queryFn: () => fetchContestListTmp(filters),
+      staleTime: 5 * 60 * 1000, //5 분
+    });
+
+    return { data, isLoading };
+  };
+
+  export default useGetList;
+  ```
 
 필터가 복잡한 만큼 queryKey 를 배열로 받는다
 
@@ -184,11 +265,11 @@ export default useGetList;
 
 ```ts
 [
-  'contestList',
+  "contestList",
   {
-    field: ['idea', 'it'],
-    ageGroup: 'college',
-    organizerType: ['big', 'public'],
+    field: ["idea", "it"],
+    ageGroup: "college",
+    organizerType: ["big", "public"],
   },
 ];
 ```
@@ -204,23 +285,3 @@ gpt 가 구별할 수 있다고 장담을 하고
 query key는 문자열 , 문자열의 배열 혹은 중첩된 객체(nested object) 로 지정 가능하다.
 
 라고 하니 아마 문제는 없을듯?
-
-```ts
-const { data, isLoading } = useQuery<Contest[]>({
-  queryKey: queryKey,
-  queryFn: () => fetchContestListTmp(filters),
-  staleTime: 5 * 60 * 1000, //5 분
-});
-
-return { data, isLoading };
-```
-
-여기에서 data 는 말 그대로 data
-
-isLoading 는 데이터값을 불러 왔는지 어떤지 `true`, `false` 값으로 반환한다.
-
-`staleTime` 는 데이터 만료 시간
-
-그밖에 `refetchInterval` 나 `throwOnError` 등의 옵션이 있는데
-
-tanstack doc or [여길](https://www.heropy.dev/p/HZaKIE) 참고하길 바란다
