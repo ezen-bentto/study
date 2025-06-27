@@ -88,6 +88,10 @@ user 가 북마크 버튼을 클릭하면 해당 페이지 북마크가 추가�
 
   `onSuccess`, `onError` 각각 사항들 추가해줬다.
 
+  각각 성공했을때,실패했을때 어떤것을 실행할 것인가 이다.
+
+  지금은 단순히 queryClient.invalidateQueries({ queryKey: ["bookmark", contestId] }); 를 적용해서 캐싱 값 refetch하기만 해놨다
+
 ### 2-2. 낙관적 업데이트
 
 이렇게 하면 문제없이 작동하지만
@@ -133,44 +137,97 @@ user 가 북마크 버튼을 클릭하면 해당 페이지 북마크가 추가�
 코드를 보자
 
 ```ts
+
 export const useBookmarkMutation = (contestId: number) => {
   const queryClient = useQueryClient();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => fetchBookmark(contestId),
+    mutationFn: () => fetchCheckBookmark(contestId),
 
-    // ✅ 낙관적 업데이트 적용
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ["bookmark", contestId] });
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ["bookmarkStatus", contestId] }),
+        queryClient.cancelQueries({ queryKey: ["bookmarkCount", contestId] }),
+      ]);
 
-      const previous = queryClient.getQueryData<{
-        isBookmarked: boolean;
-        bookmarkCount: number;
-      }>(["bookmark", contestId]);
+      let previousStatus = queryClient.getQueryData<boolean>(["bookmarkStatus", contestId]);
+      let previousCount = queryClient.getQueryData<number>(["bookmarkCount", contestId]);
 
-      if (previous) {
-        queryClient.setQueryData(["bookmark", contestId], {
-          isBookmarked: !previous.isBookmarked,
-          bookmarkCount: previous.isBookmarked
-            ? previous.bookmarkCount - 1
-            : previous.bookmarkCount + 1,
-        });
+      if (previousStatus === undefined) {
+        console.info("[onMutate] 북마크 상태 캐시가 없어 먼저 fetch");
+        try {
+          previousStatus = await fetchIsBookmark(contestId);
+          queryClient.setQueryData(["bookmarkStatus", contestId], previousStatus);
+        } catch (error) {
+          console.error("북마크 상태 fetch 실패:", error);
+          previousStatus = false;
+        }
       }
 
-      return { previous }; // rollback을 위한 반환
+      if (previousCount === undefined) {
+        console.info("[onMutate] 북마크 카운트 캐시가 없어 먼저 fetch");
+        try {
+          const countResponse = await fetchBookmarkCnt(contestId);
+          previousCount = Number(countResponse);
+          queryClient.setQueryData(["bookmarkCount", contestId], previousCount);
+        } catch (error) {
+          console.error("북마크 카운트 fetch 실패:", error);
+          previousCount = 0;
+        }
+      }
+
+      previousCount = Number(previousCount);
+
+      console.info("[onMutate] 이전 상태:", { previousStatus, previousCount });
+
+      const newStatus = !previousStatus;
+      const newCount = previousStatus ? previousCount - 1 : previousCount + 1;
+
+      queryClient.setQueryData(["bookmarkStatus", contestId], newStatus);
+      queryClient.setQueryData(["bookmarkCount", contestId], newCount);
+
+      console.info("[onMutate] 낙관적 상태 적용됨:", { newStatus, newCount });
+
+      return {
+        previousStatus,
+        previousCount,
+      };
     },
 
-    // ❌ 실패 시 롤백 처리
+    onSuccess: () => {
+      console.info("[onSuccess] 성공 - 쿼리 무효화");
+
+      // 기존 캐시 완전 삭제 후 다시 fetch
+      queryClient.removeQueries({ queryKey: ["bookmarkStatus", contestId] });
+      queryClient.removeQueries({ queryKey: ["bookmarkCount", contestId] });
+
+      // 새로 fetch
+      queryClient.fetchQuery({
+        queryKey: ["bookmarkStatus", contestId],
+        queryFn: () => fetchIsBookmark(contestId),
+      });
+      queryClient.fetchQuery({
+        queryKey: ["bookmarkCount", contestId],
+        queryFn: () => fetchBookmarkCnt(contestId),
+      });
+    },
+
     onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(["bookmark", contestId], context.previous);
+      console.error("[onError] 에러 발생, 이전 상태로 롤백");
+      if (context) {
+        if (typeof context.previousStatus === "boolean") {
+          queryClient.setQueryData(["bookmarkStatus", contestId], context.previousStatus);
+        }
+        if (typeof context.previousCount === "number") {
+          queryClient.setQueryData(["bookmarkCount", contestId], context.previousCount);
+        }
       }
     },
 
-    // ✅ 최종적으로 refetch로 정확한 데이터 확보
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookmark", contestId] });
+    // onSettled 제거! 또는 로깅용으로만 사용
+    onSettled: (data, error) => {
+      console.info("[onSettled] mutation 완료", { data, error: error?.message });
     },
   });
 
@@ -178,10 +235,9 @@ export const useBookmarkMutation = (contestId: number) => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
     }
-
     timerRef.current = setTimeout(() => {
       mutation.mutate();
-    }, 300); // 300ms debounce
+    }, 300);
   };
 
   return {
@@ -189,90 +245,69 @@ export const useBookmarkMutation = (contestId: number) => {
     isPending: mutation.isPending,
   };
 };
+
 ```
 
 다소 코드 길어서 나눠서 보도록 하자
 
-- mutationFn
+✅ 전체 흐름 요약
 
-  ```ts
-  mutationFn: () => fetchBookmark(contestId),
-  ```
 
-  실제로 서버에 북마크 토글 요청 (POST)을 보내는 API 함수
+`const { mutate } = useBookmarkMutation(contestId);`
+이렇게 호출하면:
 
-- onMutate (낙관적 업데이트)
+300ms 디바운스로 mutate() 실행
 
-  ```ts
-  onMutate: async () => {
-  await queryClient.cancelQueries({ queryKey: ["bookmark", contestId] });
-  ```
+onMutate에서 캐시 값 가져오고 낙관적 업데이트
 
-  서버 요청 전에 기존 쿼리를 중단(cancel) 하여 충돌 방지
+실제 북마크 토글 API 호출
 
-  ```ts
-  const previous = queryClient.getQueryData<{
-    isBookmarked: boolean;
-    bookmarkCount: number;
-  }>(["bookmark", contestId]);
-  ```
+onSuccess에서 강제로 다시 fetch 해서 동기화
 
-  기존 데이터를 미리 저장 (rollback 대비)
+실패 시 onError에서 이전 값으로 롤백
 
-  ```ts
-  if (previous) {
-    queryClient.setQueryData(["bookmark", contestId], {
-      isBookmarked: !previous.isBookmarked,
-      bookmarkCount: previous.isBookmarked
-        ? previous.bookmarkCount - 1
-        : previous.bookmarkCount + 1,
-    });
-  }
+🔍 각 단계 설명
+onMutate
+ts
+복사
+편집
+await Promise.all([
+  queryClient.cancelQueries({ queryKey: ["bookmarkStatus", contestId] }),
+  queryClient.cancelQueries({ queryKey: ["bookmarkCount", contestId] }),
+]);
+북마크 상태/카운트 관련 쿼리 중단
 
-  return { previous };
-  ```
+이전 값 가져오기 (없으면 fetch)
+→ 캐시 없을 경우 fetchIsBookmark, fetchBookmarkCnt 호출해서 강제로 가져옴
 
-  응답 오기 전 UI를 먼저 업데이트 (isBookmarked 토글, count 변경)
+낙관적 업데이트 적용
 
-  이후 실패했을 때 되돌리기 위해 previous 반환
+```ts
+const newStatus = !previousStatus;
+const newCount = previousStatus ? previousCount - 1 : previousCount + 1;
+```
+onSuccess
+성공 시 캐시 완전 삭제 후 새로 fetch
 
-- onError - 실패 시 롤백
+```ts
+queryClient.removeQueries(...);
+queryClient.fetchQuery(...);
+```
+refetchQueries 대신 remove + fetchQuery 사용하는 이유: 더 강제적인 새 fetch 보장
 
-  ```ts
-    onError: (_err, _vars, context) => {
-  if (context?.previous) {
-    queryClient.setQueryData(["bookmark", contestId], context.previous);
-  }
-  },
+onError
+실패하면 이전 상태로 롤백
 
-  ```
+```ts
+if (context) {
+  queryClient.setQueryData(...);
+}
+```
+debounceMutate
+setTimeout으로 debounce 처리
 
-  서버 요청 실패 시, onMutate에서 저장했던 값으로 롤백 (네트워크 에러나 인증 실패)
+빠른 클릭 방지 목적 (e.g. 북마크 버튼 연타)
 
-- onSettled - refetch
-
-  ```ts
-  onSettled: () => {
-    queryClient.invalidateQueries({ queryKey: ["bookmark", contestId] });
-  };
-  ```
-
-- Debounce 처리
-
-  이건 낙관적 업데이트가 아닌데
-
-  사용자가 여러번 눌렀을때 마지막 클릭만 처리하기 위한 기능을 추가하였다.
-
-  ```ts
-  const debounceMutate = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-    timerRef.current = setTimeout(() => {
-      mutation.mutate();
-    }, 300); // 300ms 후 마지막 요청 실행
-  };
-  ```
 
 전체 흐름은
 
