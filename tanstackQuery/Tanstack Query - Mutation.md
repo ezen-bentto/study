@@ -268,13 +268,12 @@ onSuccess에서 강제로 다시 fetch 해서 동기화
 
 🔍 각 단계 설명
 onMutate
-ts
-복사
-편집
+```ts
 await Promise.all([
   queryClient.cancelQueries({ queryKey: ["bookmarkStatus", contestId] }),
   queryClient.cancelQueries({ queryKey: ["bookmarkCount", contestId] }),
 ]);
+```
 북마크 상태/카운트 관련 쿼리 중단
 
 이전 값 가져오기 (없으면 fetch)
